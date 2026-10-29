@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Votação - Qual Jogo Hoje</title>
+<meta name="theme-color" content="#0e0e10">
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23ff4fa3'/%3E%3Ccircle cx='10' cy='10' r='2.6' fill='%23fff'/%3E%3Ccircle cx='16' cy='16' r='2.6' fill='%23fff'/%3E%3Ccircle cx='22' cy='22' r='2.6' fill='%23fff'/%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0e0e10;--panel:#18181b;--line:#2b2b31;--tx:#efeff1;--mut:#a1a1aa;--pk:#ff4fa3;--yl:#ffd23f;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:'Bricolage Grotesque',system-ui,sans-serif;line-height:1.4}
+main{max-width:560px;margin:auto;padding:20px 16px 40px}
+.logo{font-weight:800;font-size:22px;letter-spacing:-.03em}.logo span{color:var(--pk)}
+h1{font-size:28px;margin:14px 0 4px}
+.sub{color:var(--mut);font-size:14px}
+.timer{font-size:44px;font-weight:800;color:var(--yl);font-variant-numeric:tabular-nums;margin:10px 0}
+.opt{position:relative;overflow:hidden;display:flex;gap:12px;align-items:center;width:100%;text-align:left;margin-top:10px;background:var(--panel);border:2px solid var(--line);color:var(--tx);border-radius:12px;padding:10px;font:inherit;cursor:pointer}
+.opt.sel{border-color:var(--pk)}
+.opt i{position:absolute;inset:0 auto 0 0;background:var(--pk);opacity:.28;width:0;transition:width .4s}
+.opt img,.opt .ph{position:relative;width:48px;height:64px;object-fit:cover;border-radius:6px;flex:none}
+.opt .ph{display:grid;place-items:center;font-weight:800;font-size:20px;color:#fff}
+.opt .nm{position:relative;flex:1;font-weight:600}
+.opt .ct{position:relative;font-weight:800;font-size:18px}
+.opt:disabled{cursor:default}
+.win{text-align:center;margin-top:20px;padding:20px;background:var(--panel);border:2px solid var(--pk);border-radius:16px}
+.win div{font-size:32px;font-weight:800;color:var(--yl)}
+.err{color:#ff8a8a;margin-top:12px;font-size:14px;min-height:20px}
+</style>
+</head>
+<body>
+<main>
+<div class="logo">qual<span>jogo</span>hoje</div>
+<div id="c"><p class="sub">Carregando...</p></div>
+<div class="err" id="err"></div>
+</main>
+<script>
+const API='https://qual-jogo-api.bh110607.workers.dev';
+const $=id=>document.getElementById(id);
+const code=(new URLSearchParams(location.search).get('sala')||'').toUpperCase().trim();
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const rid=()=>'w'+Math.random().toString(36).slice(2,12);
+let voter;
+try{voter=localStorage.getItem('voterId');if(!voter){voter=rid();localStorage.setItem('voterId',voter)}}catch(e){voter=rid()}
+let mine=null;
+try{const m=localStorage.getItem('voto:'+code);if(m!==null)mine=Number(m)}catch(e){}
+let st=null,skew=0,sig='',ended=false;
+const hue=s=>{let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))%360;return `hsl(${h} 55% 45%)`};
+const left=()=>Math.max(0,Math.ceil((st.endsAt-(Date.now()+skew))/1000));
+const fmt=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+
+async function load(){
+  if(!code){$('c').innerHTML='<h1>Sala não informada</h1><p class="sub">Peça o link completo pra quem criou a votação.</p>';return}
+  try{
+    const r=await fetch(API+'/sala/'+code),j=await r.json();
+    if(!r.ok){$('c').innerHTML=`<h1>${esc(j.error||'Erro')}</h1><p class="sub">Confira o link com quem criou a votação.</p>`;return}
+    $('err').textContent='';skew=j.now-Date.now();st=j;draw();
+  }catch(e){$('err').textContent='Sem conexão. Tentando de novo...'}
+}
+function draw(){
+  const open=left()>0,s=JSON.stringify([st.counts,mine,open]);
+  if(s===sig)return;sig=s;ended=!open;
+  const tot=st.total||1,max=Math.max(...st.counts);
+  const opts=st.options.map((o,i)=>`<button class="opt ${mine===i?'sel':''}" data-i="${i}" ${open?'':'disabled'}><i style="width:${st.counts[i]/tot*100}%"></i>${o.cover?`<img src="${esc(o.cover)}" alt="">`:`<div class="ph" style="background:${hue(o.name)}">${esc(o.name[0])}</div>`}<span class="nm">${esc(o.name)}</span><span class="ct">${st.counts[i]}</span></button>`).join('');
+  if(open){
+    $('c').innerHTML=`<h1>Qual jogo vamos jogar?</h1><div class="sub">${mine===null?'Toque no jogo que você quer. Dá pra trocar o voto até acabar o tempo.':'Voto registrado. Você pode trocar até acabar o tempo.'}</div><div class="timer" id="t">${fmt(left())}</div>${opts}<div class="sub" style="margin-top:12px">${st.total} voto(s)</div>`;
+  }else{
+    const w=st.options.filter((o,i)=>st.counts[i]===max).map(o=>o.name);
+    $('c').innerHTML=`<h1>Votação encerrada</h1>${st.total?`<div class="win"><div class="sub">${w.length>1?'Empate entre':'O jogo escolhido'}</div><div>${esc(w.join(' / '))}</div></div>`:'<p class="sub">Ninguém votou.</p>'}${opts}<div class="sub" style="margin-top:12px">${st.total} voto(s)</div>`;
+  }
+}
+$('c').onclick=async e=>{
+  const b=e.target.closest('.opt');if(!b||!st||left()===0)return;
+  const i=Number(b.dataset.i);
+  try{
+    const r=await fetch(API+'/sala/'+code+'/voto',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({voter,option:i})});
+    const j=await r.json();
+    if(!r.ok){$('err').textContent=j.error||'Não consegui registrar o voto.';return}
+    mine=i;try{localStorage.setItem('voto:'+code,String(i))}catch(e){}
+    st.counts=st.counts.map((c,k)=>k===i?c+1:c);st.total++;draw();load();
+  }catch(e){$('err').textContent='Sem conexão. Tente de novo.'}
+};
+setInterval(()=>{if(!st)return;const t=$('t');if(t)t.textContent=fmt(left());if(!ended&&left()===0)draw()},1000);
+setInterval(load,3000);
+load();
+</script>
+</body>
+</html>
